@@ -1,0 +1,9 @@
+{
+  "buildCommand": "npx convex deploy --cmd 'npm run build:next'",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "env": {
+    "CONVEX_DEPLOY_KEY": "@convex_deploy_key"
+  }
+}
