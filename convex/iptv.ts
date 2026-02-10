@@ -376,6 +376,20 @@ type XtremeUiConfig = {
   streamBaseUrl: string;
 };
 
+function apiUrlLikelyEmbedsToken(apiUrl: string): boolean {
+  try {
+    const u = new URL(apiUrl);
+    const path = (u.pathname || "/").replace(/\/+$/, "");
+    if (!path || path === "/") return false;
+    // Heuristic: if there's at least one non-trivial segment, assume token-in-path style.
+    const segments = path.split("/").filter(Boolean);
+    if (!segments.length) return false;
+    return segments.some((s) => s.length >= 6);
+  } catch {
+    return false;
+  }
+}
+
 export const internalGetXtremeUiConfig = internalQuery({
   args: {},
   handler: async (ctx): Promise<XtremeUiConfig> => {
@@ -383,8 +397,12 @@ export const internalGetXtremeUiConfig = internalQuery({
     const apiKey = (await getSetting(ctx, "xtreme_ui_api_key")) || "";
     const streamBaseUrlSetting = await getSetting(ctx, "xtreme_ui_stream_base_url");
 
-    if (!apiUrl || !apiKey) {
+    if (!apiUrl) {
       throw new Error("CONFIG_MISSING: Xtreme UI settings not configured");
+    }
+
+    if (!apiKey && !apiUrlLikelyEmbedsToken(apiUrl)) {
+      throw new Error("CONFIG_MISSING: Xtreme UI API key missing");
     }
 
     const streamBaseUrl = (streamBaseUrlSetting || deriveOriginUrl(apiUrl)).replace(/\/$/, "");
@@ -453,12 +471,14 @@ async function xtremeApiFetchJson(url: string): Promise<any> {
 }
 
 async function xtremeApiCall(config: XtremeUiConfig, params: Record<string, string | number | undefined>) {
-  const keyParamCandidates = ["api_key", "key", "apikey"];
+  const keyParamCandidates = config.apiKey ? ["api_key", "key", "apikey"] : [null];
   let lastError: string | null = null;
 
   for (const keyParam of keyParamCandidates) {
     const u = new URL(config.apiUrl);
-    u.searchParams.set(keyParam, config.apiKey);
+    if (keyParam) {
+      u.searchParams.set(keyParam, config.apiKey);
+    }
     for (const [k, v] of Object.entries(params)) {
       if (v === undefined) continue;
       u.searchParams.set(k, String(v));
