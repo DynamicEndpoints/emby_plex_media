@@ -171,8 +171,8 @@ export async function POST(req: NextRequest) {
       streamBaseUrl?: string;
     };
 
-    if (!url || !apiKey) {
-      return NextResponse.json({ error: "Missing Panel URL or API key" }, { status: 400 });
+    if (!url) {
+      return NextResponse.json({ error: "Missing Panel URL" }, { status: 400 });
     }
 
     const panelUrl = normalizeBaseUrl(url);
@@ -218,8 +218,63 @@ export async function POST(req: NextRequest) {
       ok: false,
     };
 
+    // Some panels embed the API token in the URL path and do not require an apiKey query param.
+    // Probe each candidate once without adding any key param.
     for (const apiUrl of apiUrlCandidates) {
-      for (const keyParam of keyParamCandidates) {
+      const res = await tryFetchJson(apiUrl);
+      if (!res.ok) {
+        apiAuthAttempts.push({ apiUrl, keyParam: "(none)", note: res.error });
+        continue;
+      }
+
+      const parsedStatus =
+        res.json && typeof res.json === "object" && typeof (res.json as any).status === "string"
+          ? ((res.json as any).status as string)
+          : undefined;
+      const parsedError =
+        res.json && typeof res.json === "object" && typeof (res.json as any).error === "string"
+          ? ((res.json as any).error as string)
+          : undefined;
+
+      const textSample = "text" in res ? truncate((res as any).text, 200) : undefined;
+      const htmlish = "text" in res ? looksLikeHtml((res as any).text) : false;
+
+      apiAuthAttempts.push({
+        apiUrl,
+        keyParam: "(none)",
+        httpStatus: res.status,
+        contentType: (res as any).contentType,
+        parsedStatus,
+        parsedError,
+        isJson: !!res.json,
+        looksLikeHtml: htmlish,
+        textSample,
+      });
+
+      if (isAuthSuccessShape(res.json)) {
+        apiAuth = {
+          ok: true,
+          status: res.status,
+          message: "Authenticated without API key parameter (token likely embedded in URL)",
+        };
+        break;
+      }
+
+      // If we got JSON and it does not explicitly say invalid api key, treat it as an API endpoint.
+      // This avoids false negatives for panels with different success schemas.
+      if (res.json && typeof res.json === "object" && !isInvalidApiKeyError(parsedStatus, parsedError)) {
+        apiAuth = {
+          ok: true,
+          status: res.status,
+          message: "Panel responded with JSON without API key parameter (treating as authenticated)",
+        };
+        break;
+      }
+    }
+
+    if (!apiAuth.ok && apiKey) {
+      for (const apiUrl of apiUrlCandidates) {
+        for (const keyParam of keyParamCandidates) {
         const pingUrl = `${apiUrl}${apiUrl.includes("?") ? "&" : "?"}${keyParam}=${encodeURIComponent(
           apiKey
         )}`;
@@ -279,9 +334,10 @@ export async function POST(req: NextRequest) {
           };
           break;
         }
-      }
+        }
 
-      if (apiAuth.ok) break;
+        if (apiAuth.ok) break;
+      }
     }
 
     if (!apiAuth.ok) {
@@ -290,12 +346,20 @@ export async function POST(req: NextRequest) {
         ? "The panel responded with HTML (likely the Web UI). Try setting Panel URL to a panel API script like https://YOUR_PANEL/api.php (or reseller_api.php), then retest."
         : undefined;
 
+      const keyHint = !apiKey
+        ? "This panel may require an API key. Enter the Xtreme UI API key and retest (or provide an API URL that embeds the token)."
+        : undefined;
+
       return NextResponse.json(
         {
           success: false,
-          error: apiAuth.message || "Failed to authenticate to Xtreme UI API (check API URL + key)",
+          error:
+            apiAuth.message ||
+            (!apiKey
+              ? "Failed to authenticate to Xtreme UI API (API key missing)"
+              : "Failed to authenticate to Xtreme UI API (check API URL + key)"),
           panelStatus: panelProbe.status,
-          hint,
+          hint: hint || keyHint,
           debug: {
             apiUrlCandidates,
             apiAuthAttempts,
