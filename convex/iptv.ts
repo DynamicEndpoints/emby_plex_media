@@ -121,7 +121,7 @@ export const getConfigStatus = query({
 
     const missing: string[] = [];
     if (!xtremeUrl) missing.push("xtreme_ui_url");
-    if (!apiKey) missing.push("xtreme_ui_api_key");
+    if (!apiKey && !(xtremeUrl && apiUrlLikelyEmbedsToken(xtremeUrl))) missing.push("xtreme_ui_api_key");
 
     return {
       configured: missing.length === 0,
@@ -442,10 +442,21 @@ export const internalEnsureAccountPassword = internalMutation({
 });
 
 function buildM3uUrl(streamBaseUrl: string, username: string, password: string) {
-  const base = streamBaseUrl.replace(/\/$/, "");
-  return `${base}/get.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(
-    password
-  )}&type=m3u_plus&output=ts`;
+  const u = new URL(streamBaseUrl);
+  const normalizedPath = (u.pathname || "/").replace(/\/+$/, "");
+
+  const isPlaylist = /\/playlist$/i.test(normalizedPath);
+  const isGetPhp = /\/get\.php$/i.test(normalizedPath);
+
+  if (!isPlaylist && !isGetPhp) {
+    u.pathname = `${normalizedPath}/get.php`.replace(/\/{2,}/g, "/");
+  }
+
+  u.searchParams.set("username", username);
+  u.searchParams.set("password", password);
+  u.searchParams.set("type", "m3u_plus");
+  u.searchParams.set("output", "ts");
+  return u.toString();
 }
 
 async function xtremeApiFetchJson(url: string): Promise<any> {
@@ -914,9 +925,7 @@ export const internalProvision = internalMutation({
     const desiredExpiresAt = args.payload?.desiredExpiresAt;
 
     const m3uUrl = updatedAccount?.password
-      ? `${streamBaseUrl.replace(/\/$/, "")}/get.php?username=${encodeURIComponent(
-          updatedAccount.username
-        )}&password=${encodeURIComponent(updatedAccount.password)}&type=m3u_plus&output=ts`
+      ? buildM3uUrl(streamBaseUrl, updatedAccount.username, updatedAccount.password)
       : undefined;
 
     await ctx.db.patch(account._id, {
@@ -1017,9 +1026,7 @@ export const internalSync = internalMutation({
       undefined;
 
     if (password) {
-      const m3uUrl = `${streamBaseUrl.replace(/\/$/, "")}/get.php?username=${encodeURIComponent(
-        username
-      )}&password=${encodeURIComponent(password)}&type=m3u_plus&output=ts`;
+      const m3uUrl = buildM3uUrl(streamBaseUrl, username, password);
 
       await ctx.db.patch(account._id, {
         m3uUrl,
@@ -1060,9 +1067,7 @@ export const internalChangePassword = internalMutation({
       streamBaseUrlOverride || (await getSetting(ctx, "xtreme_ui_stream_base_url")) || (xtremeUrl ? deriveOriginUrl(xtremeUrl) : null);
 
     if (streamBaseUrl) {
-      const m3uUrl = `${streamBaseUrl.replace(/\/$/, "")}/get.php?username=${encodeURIComponent(
-        account.username
-      )}&password=${encodeURIComponent(newPassword)}&type=m3u_plus&output=ts`;
+      const m3uUrl = buildM3uUrl(streamBaseUrl, account.username, newPassword);
 
       await ctx.db.patch(account._id, {
         m3uUrl,
