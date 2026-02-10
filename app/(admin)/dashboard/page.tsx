@@ -42,13 +42,10 @@ export default function DashboardPage() {
 
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // Get Convex URL from environment
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL?.replace('.cloud', '.site') || '';
-
   const handleStripeSync = async () => {
     setIsSyncing(true);
     try {
-      const response = await fetch(`${convexUrl}/stripe/sync`, {
+      const response = await fetch(`/api/stripe/sync`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
