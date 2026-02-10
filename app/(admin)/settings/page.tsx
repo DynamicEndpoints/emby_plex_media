@@ -90,6 +90,7 @@ export default function SettingsPage() {
   const [xtremeUiStatus, setXtremeUiStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [smtpStatus, setSmtpStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [xtremeUiError, setXtremeUiError] = useState<string>("");
+  const [xtremeUiHint, setXtremeUiHint] = useState<string>("");
 
   // Load settings from Convex database
   useEffect(() => {
@@ -232,6 +233,7 @@ export default function SettingsPage() {
   const testXtremeUiConnection = async () => {
     setXtremeUiStatus("testing");
     setXtremeUiError("");
+    setXtremeUiHint("");
     try {
       const response = await fetch("/api/test-xtremeui", {
         method: "POST",
@@ -249,6 +251,9 @@ export default function SettingsPage() {
       } else {
         const msg = data.error || "Xtreme UI connection failed";
         setXtremeUiError(msg);
+        if (typeof data.hint === "string" && data.hint) {
+          setXtremeUiHint(data.hint);
+        }
         toast.error(msg);
       }
     } catch {
@@ -508,7 +513,12 @@ export default function SettingsPage() {
               </div>
 
               {xtremeUiStatus === "error" && xtremeUiError ? (
-                <p className="text-sm text-red-600">{xtremeUiError}</p>
+                <div className="space-y-1">
+                  <p className="text-sm text-red-600">{xtremeUiError}</p>
+                  {xtremeUiHint ? (
+                    <p className="text-sm text-muted-foreground">{xtremeUiHint}</p>
+                  ) : null}
+                </div>
               ) : null}
             </CardContent>
           </Card>
