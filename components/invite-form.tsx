@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card";
 import { Loader2, CheckCircle, XCircle, Copy, Eye, EyeOff, Globe, Server } from "lucide-react";
 import { toast } from "sonner";
+import { PaymentRequired } from "@/components/payment-required";
 
 interface InviteFormProps {
   code: string;
@@ -72,6 +73,11 @@ export function InviteForm({ code }: InviteFormProps) {
 
   // Check if invite is valid
   const invite = useQuery(api.invites.getByCode, { code });
+
+  const paymentInfo = useQuery(
+    api.payments.getPaymentStatus,
+    user?.id ? { clerkId: user.id } : "skip"
+  );
 
   // Check if Emby Connect is available
   useEffect(() => {
@@ -346,6 +352,31 @@ export function InviteForm({ code }: InviteFormProps) {
         </CardFooter>
       </Card>
     );
+  }
+
+  // If invite requires payment, gate before showing provisioning form.
+  if (invite.requiresPayment === true) {
+    const paymentStatus = paymentInfo?.paymentStatus;
+    const ok = paymentStatus === "active" || paymentStatus === "trialing" || paymentStatus === "free";
+
+    if (!ok) {
+      return (
+        <div className="w-full max-w-md mx-auto space-y-4">
+          <Card>
+            <CardHeader className="text-center">
+              <CardTitle>Subscription Required</CardTitle>
+              <CardDescription>
+                This invite requires an active subscription before we can set up your media access.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+          <PaymentRequired
+            paymentStatus={paymentStatus}
+            stripeCustomerId={paymentInfo?.stripeCustomerId}
+          />
+        </div>
+      );
+    }
   }
 
   // Valid invite - show form

@@ -64,26 +64,44 @@ export async function POST(request: NextRequest) {
     };
 
     // Get the Plex user ID to revoke
-    const targetPlexUserId = plexUserId || user?.plexUsername;
+    const storedPlexUserId = user?.plexUserId;
+    const storedPlexEmail = user?.plexEmail;
+    const storedPlexUsername = user?.plexUsername;
+    const targetPlexUserId = plexUserId || storedPlexUserId;
     
     // Get the Emby user ID to revoke
     const targetEmbyUserId = embyUserId || user?.embyUserId;
 
     // Revoke Plex access
-    if (targetPlexUserId) {
+    if (targetPlexUserId || storedPlexEmail || storedPlexUsername) {
       const plexConfig = await getPlexConfig();
       
       if (plexConfig.url && plexConfig.token) {
         try {
           const plexClient = new PlexClient({ url: plexConfig.url, token: plexConfig.token });
-          
-          // For Plex, we can only remove the user (no disable option)
-          const removeResult = await plexClient.removeUser(targetPlexUserId);
-          results.plex = {
-            success: removeResult.success,
-            message: removeResult.message,
-            removed: removeResult.success,
-          };
+
+          // If we don't have a numeric Plex user id stored, try to resolve it.
+          let resolvedPlexUserId = targetPlexUserId;
+          if (!resolvedPlexUserId) {
+            const plexUser = storedPlexEmail
+              ? await plexClient.findUserByEmail(storedPlexEmail)
+              : storedPlexUsername
+                ? await plexClient.findUserByUsername(storedPlexUsername)
+                : null;
+            resolvedPlexUserId = plexUser?.id;
+          }
+
+          if (!resolvedPlexUserId) {
+            results.plex.message = "Plex user not found on server";
+          } else {
+            // For Plex, we can only remove the user (no disable option)
+            const removeResult = await plexClient.removeUser(resolvedPlexUserId);
+            results.plex = {
+              success: removeResult.success,
+              message: removeResult.message,
+              removed: removeResult.success,
+            };
+          }
         } catch (error) {
           results.plex.message = error instanceof Error ? error.message : "Failed to remove Plex access";
         }

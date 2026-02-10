@@ -41,14 +41,23 @@ export const processScheduledRevocations = internalAction({
         }
 
         // Call the external revoke API
-        const revokeApiUrl = process.env.SITE_URL || process.env.VERCEL_URL || "http://localhost:3000";
+        const rawBaseUrl = process.env.SITE_URL || process.env.VERCEL_URL || "http://localhost:3000";
+        const revokeApiUrl = rawBaseUrl.startsWith("http://") || rawBaseUrl.startsWith("https://")
+          ? rawBaseUrl
+          : `https://${rawBaseUrl}`;
+
         const internalApiKey = process.env.INTERNAL_API_KEY;
+        if (!internalApiKey) {
+          results.failed++;
+          results.errors.push("INTERNAL_API_KEY not set in Convex environment");
+          continue;
+        }
 
         const response = await fetch(`${revokeApiUrl}/api/revoke-access`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-internal-api-key": internalApiKey || "",
+            "x-internal-api-key": internalApiKey,
           },
           body: JSON.stringify({
             clerkId: user.clerkId,

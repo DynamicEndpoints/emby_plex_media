@@ -78,7 +78,12 @@ export const set = mutation({
     }
 
     // Log sensitive settings changes
-    const sensitiveKeys = ["plex_token", "emby_api_key", "webhook_secret"];
+    const sensitiveKeys = [
+      "plex_token",
+      "emby_api_key",
+      "xtreme_ui_api_key",
+      "webhook_secret",
+    ];
     const isSensitive = sensitiveKeys.includes(args.key);
 
     await ctx.db.insert("auditLog", {

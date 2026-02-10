@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { ConvexClientProvider } from "./convex-client-provider";
 import { Navbar } from "@/components/navbar";
+import { EnsureUser } from "@/components/ensure-user";
 import { Toaster } from "sonner";
 import "./globals.css";
 
@@ -23,6 +24,7 @@ export default function RootLayout({
       <html lang="en" suppressHydrationWarning>
         <body className={inter.className}>
           <ConvexClientProvider>
+            <EnsureUser />
             <Navbar />
             {children}
           </ConvexClientProvider>

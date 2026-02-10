@@ -6,6 +6,8 @@ import { api } from "@/convex/_generated/api";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
+export const runtime = "nodejs";
+
 // Initialize Stripe lazily for webhooks
 function getStripe(): Stripe {
   const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -15,8 +17,13 @@ function getStripe(): Stripe {
   return new Stripe(secretKey, { typescript: true });
 }
 
-// Stripe webhook secret
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+function getWebhookSecret(): string {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) {
+    throw new Error("STRIPE_WEBHOOK_SECRET not set");
+  }
+  return secret;
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -34,6 +41,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const stripe = getStripe();
+    const webhookSecret = getWebhookSecret();
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
   } catch (err) {
     console.error("Webhook signature verification failed:", err);

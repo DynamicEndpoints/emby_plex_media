@@ -16,6 +16,7 @@ export const create = mutation({
     serverType: v.union(v.literal("plex"), v.literal("emby"), v.literal("both")),
     libraries: v.optional(v.array(v.string())),
     notes: v.optional(v.string()),
+    requiresPayment: v.optional(v.boolean()),
     createdBy: v.string(),
   },
   handler: async (ctx, args) => {
@@ -33,6 +34,7 @@ export const create = mutation({
       serverType: args.serverType,
       libraries: args.libraries,
       notes: args.notes,
+      requiresPayment: args.requiresPayment,
     });
 
     // Log the action
@@ -115,8 +117,11 @@ export const redeem = mutation({
     clerkId: v.string(),
     email: v.string(),
     username: v.string(),
+    plexEmail: v.optional(v.string()),
+    plexUserId: v.optional(v.string()),
     plexUsername: v.optional(v.string()),
     embyUserId: v.optional(v.string()),
+    embyUsername: v.optional(v.string()),
     ipAddress: v.optional(v.string()),
     userAgent: v.optional(v.string()),
   },
@@ -154,22 +159,54 @@ export const redeem = mutation({
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
       .first();
 
-    if (existingUser) {
-      throw new Error("You have already redeemed an invite");
-    }
+    // Back-compat: older callers used plexUsername to send an email address.
+    const inferredPlexEmail =
+      args.plexEmail ||
+      (args.plexUsername && args.plexUsername.includes("@") ? args.plexUsername : undefined);
 
-    // Create user
-    const userId = await ctx.db.insert("users", {
-      clerkId: args.clerkId,
-      email: args.email,
-      username: args.username,
-      inviteCode: args.code.toUpperCase(),
-      plexUsername: args.plexUsername,
-      embyUserId: args.embyUserId,
-      serverAccess: invite.serverType,
-      isActive: true,
-      createdAt: Date.now(),
-    });
+    const inferredPlexUsername =
+      args.plexUsername && !args.plexUsername.includes("@") ? args.plexUsername : undefined;
+
+    // If a pending user exists (created via webhook/ensure), upgrade it instead of failing.
+    let userId: any;
+    if (existingUser) {
+      const alreadyRedeemed = !!existingUser.inviteCode;
+      const hasAccess = existingUser.serverAccess && existingUser.serverAccess !== "none";
+
+      if (alreadyRedeemed || hasAccess) {
+        throw new Error("You have already redeemed an invite");
+      }
+
+      userId = existingUser._id;
+      await ctx.db.patch(existingUser._id, {
+        email: args.email,
+        username: args.username,
+        inviteCode: args.code.toUpperCase(),
+        plexEmail: inferredPlexEmail ?? existingUser.plexEmail,
+        plexUserId: args.plexUserId ?? existingUser.plexUserId,
+        plexUsername: inferredPlexUsername ?? existingUser.plexUsername,
+        embyUserId: args.embyUserId ?? existingUser.embyUserId,
+        embyUsername: args.embyUsername ?? existingUser.embyUsername,
+        serverAccess: invite.serverType,
+        isActive: true,
+      });
+    } else {
+      // Create user
+      userId = await ctx.db.insert("users", {
+        clerkId: args.clerkId,
+        email: args.email,
+        username: args.username,
+        inviteCode: args.code.toUpperCase(),
+        plexEmail: inferredPlexEmail,
+        plexUserId: args.plexUserId,
+        plexUsername: inferredPlexUsername,
+        embyUserId: args.embyUserId,
+        embyUsername: args.embyUsername,
+        serverAccess: invite.serverType,
+        isActive: true,
+        createdAt: Date.now(),
+      });
+    }
 
     // Record redemption
     await ctx.db.insert("redemptions", {

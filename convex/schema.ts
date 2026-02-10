@@ -59,7 +59,9 @@ export default defineSchema({
     .index("by_email", ["email"])
     .index("by_invite_code", ["inviteCode"])
     .index("by_active", ["isActive"])
-    .index("by_stripe_customer", ["stripeCustomerId"]),
+    .index("by_stripe_customer", ["stripeCustomerId"])
+    .index("by_plex_user_id", ["plexUserId"])
+    .index("by_emby_user_id", ["embyUserId"]),
 
   // Scheduled access revocations (for grace periods)
   scheduledRevocations: defineTable({
@@ -112,6 +114,22 @@ export default defineSchema({
     .index("by_stripe_payment", ["stripePaymentId"])
     .index("by_stripe_customer", ["stripeCustomerId"])
     .index("by_user", ["userId"])
+    .index("by_timestamp", ["createdAt"]),
+
+  // One-time donations (e.g., Buy Me a Coffee)
+  donations: defineTable({
+    provider: v.string(),
+    eventType: v.optional(v.string()),
+    externalId: v.optional(v.string()),
+    supporterEmail: v.string(),
+    amount: v.optional(v.number()), // cents if known
+    currency: v.optional(v.string()),
+    message: v.optional(v.string()),
+    raw: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_email", ["supporterEmail"])
+    .index("by_provider_external", ["provider", "externalId"])
     .index("by_timestamp", ["createdAt"]),
 
   // Redemption history
@@ -197,4 +215,66 @@ export default defineSchema({
   })
     .index("by_code", ["friendCodeId"])
     .index("by_user", ["clerkId"]),
+
+  // Background job queue (retries + sync)
+  jobs: defineTable({
+    type: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+      v.literal("canceled")
+    ),
+    userId: v.optional(v.id("users")),
+    clerkId: v.optional(v.string()),
+    payload: v.optional(v.string()),
+    attempts: v.number(),
+    maxAttempts: v.number(),
+    nextRunAt: v.number(),
+    lockedAt: v.optional(v.number()),
+    lockedBy: v.optional(v.string()),
+    lastAttemptAt: v.optional(v.number()),
+    lastError: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_status_next_run", ["status", "nextRunAt"])
+    .index("by_user", ["userId"])
+    .index("by_clerk_id", ["clerkId"])
+    .index("by_type", ["type"])
+    .index("by_updated", ["updatedAt"]),
+
+  // IPTV accounts per user (Xtreme UI / Xtream-style)
+  iptvAccounts: defineTable({
+    provider: v.union(v.literal("xtremeui")),
+    userId: v.id("users"),
+    username: v.string(),
+    password: v.optional(v.string()),
+    status: v.union(v.literal("pending"), v.literal("active"), v.literal("suspended")),
+    planId: v.optional(v.id("iptvPlans")),
+    bouquetIds: v.optional(v.array(v.string())),
+    m3uUrl: v.optional(v.string()),
+    expiresAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_provider_username", ["provider", "username"])
+    .index("by_status", ["status"])
+    .index("by_plan", ["planId"]),
+
+  // IPTV plans (bouquet assignment + upgrade/downgrade targets)
+  iptvPlans: defineTable({
+    provider: v.union(v.literal("xtremeui")),
+    name: v.string(),
+    description: v.optional(v.string()),
+    bouquetIds: v.optional(v.array(v.string())),
+    durationDays: v.optional(v.number()),
+    stripePriceId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_provider", ["provider"])
+    .index("by_stripe_price", ["stripePriceId"]),
 });

@@ -25,6 +25,11 @@ export interface AppConfig {
     url: string;
     apiKey: string;
   };
+  xtremeUi: {
+    url: string;
+    apiKey: string;
+    streamBaseUrl: string; // Added streamBaseUrl
+  };
   smtp: {
     host: string;
     port: number;
@@ -47,6 +52,15 @@ export async function getAppConfig(): Promise<AppConfig> {
   const client = getConvexClient();
   const settings = await client.query(api.settings.getAll);
 
+  const deriveOrigin = (raw: string) => {
+    try {
+      const u = new URL(raw);
+      return `${u.protocol}//${u.host}`;
+    } catch {
+      return raw;
+    }
+  };
+
   return {
     plex: {
       url: settings[SETTINGS_KEYS.PLEX_URL] || "",
@@ -55,6 +69,15 @@ export async function getAppConfig(): Promise<AppConfig> {
     emby: {
       url: settings[SETTINGS_KEYS.EMBY_URL] || "",
       apiKey: settings[SETTINGS_KEYS.EMBY_API_KEY] || "",
+    },
+    xtremeUi: {
+      url: settings[SETTINGS_KEYS.XTREME_UI_URL] || "",
+      apiKey: settings[SETTINGS_KEYS.XTREME_UI_API_KEY] || "",
+      streamBaseUrl:
+        settings[SETTINGS_KEYS.XTREME_UI_STREAM_BASE_URL] ||
+        (settings[SETTINGS_KEYS.XTREME_UI_URL]
+          ? deriveOrigin(settings[SETTINGS_KEYS.XTREME_UI_URL])
+          : ""),
     },
     smtp: {
       host: settings[SETTINGS_KEYS.SMTP_HOST] || "",
@@ -86,6 +109,14 @@ export async function getPlexConfig() {
 export async function getEmbyConfig() {
   const config = await getAppConfig();
   return config.emby;
+}
+
+/**
+ * Get Xtreme UI configuration
+ */
+export async function getXtremeUiConfig() {
+  const config = await getAppConfig();
+  return config.xtremeUi;
 }
 
 /**

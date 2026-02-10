@@ -1,19 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
-import { useMutation } from "convex/react";
-import { api } from "@/convex/_generated/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, Loader2 } from "lucide-react";
 import Link from "next/link";
 
-export default function PaymentSuccessPage() {
+function PaymentSuccessContent() {
   const searchParams = useSearchParams();
-  const router = useRouter();
-  const { user, isLoaded } = useUser();
+  const { isLoaded } = useUser();
   const [isProcessing, setIsProcessing] = useState(true);
   const sessionId = searchParams.get("session_id");
 
@@ -60,11 +57,16 @@ export default function PaymentSuccessPage() {
                 Thank you for subscribing to Remote Computer Support! Your media
                 server access is now being set up.
               </p>
+              {sessionId ? (
+                <p className="text-xs text-muted-foreground break-all">
+                  Reference: {sessionId}
+                </p>
+              ) : null}
               <div className="bg-muted rounded-lg p-4 text-sm">
-                <p className="font-medium">What's next?</p>
+                <p className="font-medium">What&apos;s next?</p>
                 <ul className="mt-2 text-left text-muted-foreground space-y-1">
                   <li>• Your account will be activated shortly</li>
-                  <li>• You'll receive login credentials via email</li>
+                  <li>• You&apos;ll receive login credentials via email</li>
                   <li>• Access your media libraries anytime</li>
                 </ul>
               </div>
@@ -81,5 +83,19 @@ export default function PaymentSuccessPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function PaymentSuccessPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin" />
+        </div>
+      }
+    >
+      <PaymentSuccessContent />
+    </Suspense>
   );
 }

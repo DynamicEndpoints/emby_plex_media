@@ -10,9 +10,12 @@
 
 import type * as admins from "../admins.js";
 import type * as crons from "../crons.js";
+import type * as donations from "../donations.js";
 import type * as friendCodes from "../friendCodes.js";
 import type * as http from "../http.js";
 import type * as invites from "../invites.js";
+import type * as iptv from "../iptv.js";
+import type * as jobs from "../jobs.js";
 import type * as notifications from "../notifications.js";
 import type * as payments from "../payments.js";
 import type * as revocations from "../revocations.js";
@@ -29,9 +32,12 @@ import type {
 declare const fullApi: ApiFromModules<{
   admins: typeof admins;
   crons: typeof crons;
+  donations: typeof donations;
   friendCodes: typeof friendCodes;
   http: typeof http;
   invites: typeof invites;
+  iptv: typeof iptv;
+  jobs: typeof jobs;
   notifications: typeof notifications;
   payments: typeof payments;
   revocations: typeof revocations;

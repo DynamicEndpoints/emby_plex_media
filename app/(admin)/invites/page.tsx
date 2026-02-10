@@ -78,6 +78,13 @@ export default function InvitesPage() {
     return <Badge variant="success">Active</Badge>;
   };
 
+  const getPaymentBadge = (invite: any) => {
+    if (invite.requiresPayment === true) {
+      return <Badge variant="secondary">Payment Required</Badge>;
+    }
+    return <Badge variant="outline">No Payment</Badge>;
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -103,6 +110,7 @@ export default function InvitesPage() {
               <TableRow>
                 <TableHead>Code</TableHead>
                 <TableHead>Server</TableHead>
+                <TableHead>Payment</TableHead>
                 <TableHead>Uses</TableHead>
                 <TableHead>Restricted To</TableHead>
                 <TableHead>Expires</TableHead>
@@ -137,6 +145,7 @@ export default function InvitesPage() {
                         invite.serverType.slice(1)}
                     </Badge>
                   </TableCell>
+                  <TableCell>{getPaymentBadge(invite)}</TableCell>
                   <TableCell>
                     {invite.usedCount} / {invite.maxUses}
                   </TableCell>
@@ -194,7 +203,7 @@ export default function InvitesPage() {
               {(!invites || invites.length === 0) && (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className="text-center text-muted-foreground py-8"
                   >
                     No invites yet. Create your first invite to get started.

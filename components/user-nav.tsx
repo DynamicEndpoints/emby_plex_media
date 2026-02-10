@@ -4,10 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
-import { Home, FolderOpen, Settings, User, HelpCircle } from "lucide-react";
+import { Home, FolderOpen, Settings, User, HelpCircle, Tv } from "lucide-react";
 
 const navItems = [
   { href: "/my-account", label: "My Account", icon: Home },
+  { href: "/my-iptv", label: "My IPTV", icon: Tv },
   { href: "/my-libraries", label: "My Libraries", icon: FolderOpen },
   { href: "/my-settings", label: "Settings", icon: Settings },
   { href: "/help", label: "Help", icon: HelpCircle },

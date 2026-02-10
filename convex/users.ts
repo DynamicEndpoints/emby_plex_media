@@ -29,6 +29,57 @@ export const getByClerkId = query({
   },
 });
 
+// Ensure a user record exists (self-service friendly)
+export const ensure = mutation({
+  args: {
+    clerkId: v.string(),
+    email: v.string(),
+    username: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const normalizedEmail = args.email.trim().toLowerCase();
+
+    const donation = await ctx.db
+      .query("donations")
+      .withIndex("by_email", (q) => q.eq("supporterEmail", normalizedEmail))
+      .first();
+
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (existing) {
+      // Keep core identity fields reasonably fresh.
+      await ctx.db.patch(existing._id, {
+        email: normalizedEmail,
+        username: args.username,
+        lastSeen: Date.now(),
+        ...(donation
+          ? {
+              paymentStatus: "free" as const,
+              isActive: true,
+              accessRevokedAt: undefined,
+              accessRevokedReason: undefined,
+            }
+          : {}),
+      });
+      return existing._id;
+    }
+
+    return await ctx.db.insert("users", {
+      clerkId: args.clerkId,
+      email: normalizedEmail,
+      username: args.username,
+      serverAccess: "none",
+      isActive: !!donation,
+      paymentStatus: donation ? "free" : "pending",
+      createdAt: Date.now(),
+      lastSeen: Date.now(),
+    });
+  },
+});
+
 // Get user by ID
 export const getById = query({
   args: { id: v.id("users") },
@@ -195,19 +246,31 @@ export const createFromWebhook = mutation({
     username: v.string(),
   },
   handler: async (ctx, args) => {
-    // Check if user already exists
-    const existingUser = await ctx.db
+    // Keep webhook behavior aligned with self-service: always ensure a record exists.
+    const id = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
       .first();
 
-    if (existingUser) {
-      return existingUser._id;
+    if (id) {
+      await ctx.db.patch(id._id, {
+        email: args.email,
+        username: args.username,
+        lastSeen: Date.now(),
+      });
+      return id._id;
     }
 
-    // This creates a pending user - they still need to redeem an invite
-    // or be auto-linked via the link-accounts API
-    return null;
+    return await ctx.db.insert("users", {
+      clerkId: args.clerkId,
+      email: args.email,
+      username: args.username,
+      serverAccess: "none",
+      isActive: false,
+      paymentStatus: "pending",
+      createdAt: Date.now(),
+      lastSeen: Date.now(),
+    });
   },
 });
 

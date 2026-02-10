@@ -56,6 +56,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid or expired invite" }, { status: 400 });
     }
 
+    // If this invite requires payment, ensure the user has an active/trialing/free status.
+    if (invite.requiresPayment === true) {
+      const existingUser = await convex.query(api.users.getByClerkId, { clerkId });
+      const status = existingUser?.paymentStatus;
+      const isPaid = status === "active" || status === "trialing" || status === "free";
+
+      if (!isPaid) {
+        return NextResponse.json(
+          {
+            error: "Subscription required before redeeming this invite.",
+            paymentRequired: true,
+            paymentStatus: status || "pending",
+            stripeCustomerId: existingUser?.stripeCustomerId || null,
+          },
+          { status: 402 }
+        );
+      }
+    }
+
     const results = {
       plex: { success: false, message: "", invited: false },
       emby: { 
@@ -205,8 +224,11 @@ export async function POST(req: Request) {
         clerkId,
         email,
         username,
-        plexUsername: plexEmail,
-        embyUserId: results.emby.userId || embyUsername || embyConnectEmail,
+        plexEmail: plexEmail || undefined,
+        embyUserId: results.emby.userId || undefined,
+        embyUsername: results.emby.useConnect
+          ? (embyConnectEmail || undefined)
+          : (embyUsername || undefined),
       });
     }
 

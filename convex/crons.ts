@@ -17,4 +17,12 @@ crons.daily(
   internal.revocations.syncSubscriptionStatuses
 );
 
+// Process background jobs (IPTV provisioning/sync/etc.) every minute
+crons.interval(
+  "process-background-jobs",
+  { minutes: 1 },
+  internal.jobs.processDueJobs,
+  { batchSize: 10, runnerId: "cron" }
+);
+
 export default crons;

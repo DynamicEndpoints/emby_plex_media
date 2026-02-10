@@ -135,11 +135,11 @@ export default function MySettingsPage() {
             <div className="p-4 rounded-lg bg-muted/50">
               <h4 className="font-medium mb-2">Need Help?</h4>
               <p className="text-sm text-muted-foreground mb-3">
-                If you're having trouble accessing your media or have questions about your account, 
+                If you&apos;re having trouble accessing your media or have questions about your account, 
                 please contact the server administrator.
               </p>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                <li>Can't connect to the server? Check your network connection</li>
+                <li>Can&apos;t connect to the server? Check your network connection</li>
                 <li>Missing libraries? Contact the admin for access</li>
                 <li>Playback issues? Try a different quality setting</li>
               </ul>

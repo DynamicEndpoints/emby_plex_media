@@ -4,6 +4,9 @@ export const SETTINGS_KEYS = {
   PLEX_TOKEN: "plex_token",
   EMBY_URL: "emby_url",
   EMBY_API_KEY: "emby_api_key",
+  XTREME_UI_URL: "xtreme_ui_url",
+  XTREME_UI_API_KEY: "xtreme_ui_api_key",
+  XTREME_UI_STREAM_BASE_URL: "xtreme_ui_stream_base_url", // Added for generating M3U links
   WEBHOOK_URL: "webhook_url",
   WEBHOOK_SECRET: "webhook_secret",
   SMTP_HOST: "smtp_host",

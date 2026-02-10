@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, Loader2, Copy, Check, FolderOpen, Tv } from "lucide-react";
 
 interface Library {
@@ -58,6 +59,7 @@ export function CreateInviteDialog() {
   const [serverType, setServerType] = useState<"plex" | "emby" | "both">("emby");
   const [expiresIn, setExpiresIn] = useState("never");
   const [notes, setNotes] = useState("");
+  const [requiresPayment, setRequiresPayment] = useState(true);
 
   const createInvite = useMutation(api.invites.create);
 
@@ -133,6 +135,7 @@ export function CreateInviteDialog() {
           ? [...selectedLibraries, ...selectedFeatures] 
           : undefined,
         notes: notes || undefined,
+        requiresPayment,
         createdBy: user.id,
       });
 
@@ -162,6 +165,7 @@ export function CreateInviteDialog() {
       setServerType("emby");
       setExpiresIn("never");
       setNotes("");
+      setRequiresPayment(true);
       setCopied(false);
       setSelectedLibraries([]);
       setSelectedFeatures([]);
@@ -286,6 +290,19 @@ export function CreateInviteDialog() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   placeholder="e.g., Friend from work"
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border p-3">
+                <div className="space-y-0.5">
+                  <Label>Require Subscription</Label>
+                  <p className="text-xs text-muted-foreground">
+                    When enabled, the invite can only be redeemed by users with an active subscription.
+                  </p>
+                </div>
+                <Checkbox
+                  checked={requiresPayment}
+                  onCheckedChange={(v) => setRequiresPayment(v === true)}
                 />
               </div>
 

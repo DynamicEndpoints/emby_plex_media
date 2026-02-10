@@ -89,7 +89,7 @@ export default function MyLibrariesPage() {
             <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
             <h3 className="font-semibold text-lg mb-2">No Access</h3>
             <p className="text-muted-foreground text-center">
-              You don't have an active membership. Please use an invite code to gain access.
+              You don&apos;t have an active membership. Please use an invite code to gain access.
             </p>
           </CardContent>
         </Card>

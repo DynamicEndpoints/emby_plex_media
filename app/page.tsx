@@ -22,8 +22,8 @@ export default async function HomePage() {
     // Check if user is an admin (by database record OR email domain)
     const isAdmin = await convex.query(api.admins.isAdmin, { clerkId: userId, email });
 
-    // If no admins exist AND user is not a domain admin, redirect to admin setup
-    if (!hasAnyAdmins && !isAdmin) {
+    // If no admins exist, always redirect to admin setup for first-run initialization.
+    if (!hasAnyAdmins) {
       redirect("/admin-setup");
     }
 

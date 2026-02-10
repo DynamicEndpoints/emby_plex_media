@@ -51,6 +51,7 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [showPlexToken, setShowPlexToken] = useState(false);
   const [showEmbyKey, setShowEmbyKey] = useState(false);
+  const [showXtremeUiKey, setShowXtremeUiKey] = useState(false);
   const [showWebhookSecret, setShowWebhookSecret] = useState(false);
   const [showSmtpPass, setShowSmtpPass] = useState(false);
   
@@ -67,6 +68,9 @@ export default function SettingsPage() {
   const [plexToken, setPlexToken] = useState("");
   const [embyUrl, setEmbyUrl] = useState("");
   const [embyApiKey, setEmbyApiKey] = useState("");
+  const [xtremeUiUrl, setXtremeUiUrl] = useState("");
+  const [xtremeUiApiKey, setXtremeUiApiKey] = useState("");
+  const [xtremeUiStreamBaseUrl, setXtremeUiStreamBaseUrl] = useState("");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   
@@ -82,6 +86,7 @@ export default function SettingsPage() {
   // Connection test states
   const [plexStatus, setPlexStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [embyStatus, setEmbyStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [xtremeUiStatus, setXtremeUiStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [smtpStatus, setSmtpStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
 
   // Load settings from Convex database
@@ -91,6 +96,9 @@ export default function SettingsPage() {
       setPlexToken(settings[SETTINGS_KEYS.PLEX_TOKEN] || "");
       setEmbyUrl(settings[SETTINGS_KEYS.EMBY_URL] || "");
       setEmbyApiKey(settings[SETTINGS_KEYS.EMBY_API_KEY] || "");
+      setXtremeUiUrl(settings[SETTINGS_KEYS.XTREME_UI_URL] || "");
+      setXtremeUiApiKey(settings[SETTINGS_KEYS.XTREME_UI_API_KEY] || "");
+      setXtremeUiStreamBaseUrl(settings[SETTINGS_KEYS.XTREME_UI_STREAM_BASE_URL] || "");
       setWebhookUrl(settings[SETTINGS_KEYS.WEBHOOK_URL] || "");
       setWebhookSecret(settings[SETTINGS_KEYS.WEBHOOK_SECRET] || "");
       setSmtpHost(settings[SETTINGS_KEYS.SMTP_HOST] || "");
@@ -127,6 +135,23 @@ export default function SettingsPage() {
         settings: [
           { key: SETTINGS_KEYS.EMBY_URL, value: embyUrl },
           { key: SETTINGS_KEYS.EMBY_API_KEY, value: embyApiKey },
+        ],
+        adminId: user.id,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveXtremeUi = async () => {
+    if (!user) return;
+    setIsSaving(true);
+    try {
+      await setSettings({
+        settings: [
+          { key: SETTINGS_KEYS.XTREME_UI_URL, value: xtremeUiUrl },
+          { key: SETTINGS_KEYS.XTREME_UI_API_KEY, value: xtremeUiApiKey },
+          { key: SETTINGS_KEYS.XTREME_UI_STREAM_BASE_URL, value: xtremeUiStreamBaseUrl },
         ],
         adminId: user.id,
       });
@@ -202,6 +227,25 @@ export default function SettingsPage() {
     }
   };
 
+  const testXtremeUiConnection = async () => {
+    setXtremeUiStatus("testing");
+    try {
+      const response = await fetch("/api/test-xtremeui", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: xtremeUiUrl,
+          apiKey: xtremeUiApiKey,
+          streamBaseUrl: xtremeUiStreamBaseUrl,
+        }),
+      });
+      const data = await response.json();
+      setXtremeUiStatus(data.success ? "success" : "error");
+    } catch {
+      setXtremeUiStatus("error");
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -215,6 +259,7 @@ export default function SettingsPage() {
         <TabsList>
           <TabsTrigger value="plex">Plex</TabsTrigger>
           <TabsTrigger value="emby">Emby</TabsTrigger>
+          <TabsTrigger value="xtremeui">Xtreme UI</TabsTrigger>
           <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
           <TabsTrigger value="email">Email</TabsTrigger>
           {isOwner && <TabsTrigger value="admins">Admins</TabsTrigger>}
@@ -359,6 +404,91 @@ export default function SettingsPage() {
                   ) : embyStatus === "success" ? (
                     <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
                   ) : embyStatus === "error" ? (
+                    <XCircle className="mr-2 h-4 w-4 text-red-500" />
+                  ) : null}
+                  Test Connection
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="xtremeui">
+          <Card>
+            <CardHeader>
+              <CardTitle>Xtreme UI Configuration</CardTitle>
+              <CardDescription>
+                Configure your IPTV panel integration (used for line creation, renewals, and self-service)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="xtremeUiUrl">Panel URL</Label>
+                <Input
+                  id="xtremeUiUrl"
+                  value={xtremeUiUrl}
+                  onChange={(e) => setXtremeUiUrl(e.target.value)}
+                  placeholder="https://your-panel.example"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="xtremeUiStreamBaseUrl">Stream Base URL</Label>
+                <Input
+                  id="xtremeUiStreamBaseUrl"
+                  value={xtremeUiStreamBaseUrl}
+                  onChange={(e) => setXtremeUiStreamBaseUrl(e.target.value)}
+                  placeholder="https://your-stream.example"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Optional. Used to generate M3U URLs (defaults to Panel URL if empty).
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="xtremeUiApiKey">API Key</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="xtremeUiApiKey"
+                    type={showXtremeUiKey ? "text" : "password"}
+                    value={xtremeUiApiKey}
+                    onChange={(e) => setXtremeUiApiKey(e.target.value)}
+                    placeholder="Your panel API key"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowXtremeUiKey(!showXtremeUiKey)}
+                  >
+                    {showXtremeUiKey ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button onClick={handleSaveXtremeUi} disabled={isSaving}>
+                  {isSaving ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="mr-2 h-4 w-4" />
+                  )}
+                  Save
+                </Button>
+
+                <Button
+                  variant="outline"
+                  onClick={testXtremeUiConnection}
+                  disabled={!xtremeUiUrl || !xtremeUiApiKey || xtremeUiStatus === "testing"}
+                >
+                  {xtremeUiStatus === "testing" ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : xtremeUiStatus === "success" ? (
+                    <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
+                  ) : xtremeUiStatus === "error" ? (
                     <XCircle className="mr-2 h-4 w-4 text-red-500" />
                   ) : null}
                   Test Connection

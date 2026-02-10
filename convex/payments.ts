@@ -1,5 +1,6 @@
 import { mutation, query, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 // Update user payment status from Stripe webhook
 export const updatePaymentStatus = mutation({
@@ -45,6 +46,14 @@ export const updatePaymentStatus = mutation({
       paymentExpiresAt: args.paymentExpiresAt,
       // Activate user if payment is active
       isActive: args.paymentStatus === "active" || args.paymentStatus === "trialing" || args.paymentStatus === "free",
+    });
+
+    // Auto IPTV automation: ensure/renew/suspend based on payment state.
+    await ctx.runMutation(internal.iptv.internalHandlePaymentStatusChange, {
+      userId: user._id,
+      clerkId: user.clerkId,
+      paymentStatus: args.paymentStatus,
+      paymentExpiresAt: args.paymentExpiresAt,
     });
 
     return user._id;
@@ -195,7 +204,18 @@ export const setStripeCustomerId = mutation({
       .first();
 
     if (!user) {
-      return null;
+      // Self-service: allow Stripe to attach even if a user row wasn't created yet.
+      return await ctx.db.insert("users", {
+        clerkId: args.clerkId,
+        email: "unknown",
+        username: "User",
+        serverAccess: "none",
+        isActive: false,
+        paymentStatus: "pending",
+        stripeCustomerId: args.stripeCustomerId,
+        createdAt: Date.now(),
+        lastSeen: Date.now(),
+      });
     }
 
     await ctx.db.patch(user._id, {
@@ -501,6 +521,14 @@ export const internal_updatePaymentStatus = internalMutation({
       isActive: args.paymentStatus === "active" || args.paymentStatus === "trialing" || args.paymentStatus === "free",
     });
 
+    // Auto IPTV automation: ensure/renew/suspend based on payment state.
+    await ctx.runMutation(internal.iptv.internalHandlePaymentStatusChange, {
+      userId: user._id,
+      clerkId: user.clerkId,
+      paymentStatus: args.paymentStatus,
+      paymentExpiresAt: args.paymentExpiresAt,
+    });
+
     return user._id;
   },
 });
@@ -518,7 +546,19 @@ export const internal_setStripeCustomerId = internalMutation({
       .first();
 
     if (!user) {
-      return null;
+      // Self-service: if the user record doesn't exist yet, create a minimal pending record.
+      // Identity fields will be refreshed by `users.ensure` and/or Clerk webhook.
+      return await ctx.db.insert("users", {
+        clerkId: args.clerkId,
+        email: "unknown",
+        username: "User",
+        serverAccess: "none",
+        isActive: false,
+        paymentStatus: "pending",
+        stripeCustomerId: args.stripeCustomerId,
+        createdAt: Date.now(),
+        lastSeen: Date.now(),
+      });
     }
 
     await ctx.db.patch(user._id, {
