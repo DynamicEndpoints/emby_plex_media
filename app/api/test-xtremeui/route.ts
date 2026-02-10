@@ -59,93 +59,6 @@ async function tryFetchJson(url: string) {
   }
 }
 
-async function tryFetchSample(url: string, maxBytes = 2048) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      cache: "no-store",
-      headers: {
-        // Best-effort to avoid downloading a huge playlist.
-        Range: `bytes=0-${maxBytes - 1}`,
-        Accept: "*/*",
-      },
-      signal: controller.signal,
-    });
-
-    const contentType = res.headers.get("content-type") || undefined;
-
-    if (!res.body) {
-      const text = await res.text();
-      return {
-        ok: true as const,
-        status: res.status,
-        contentType,
-        sample: truncate(text, maxBytes),
-      };
-    }
-
-    const reader = res.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let received = 0;
-
-    while (received < maxBytes) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value) continue;
-      const remaining = maxBytes - received;
-      if (value.byteLength > remaining) {
-        chunks.push(value.slice(0, remaining));
-        received += remaining;
-        break;
-      }
-      chunks.push(value);
-      received += value.byteLength;
-    }
-
-    try {
-      await reader.cancel();
-    } catch {
-      // ignore
-    }
-
-    const merged = new Uint8Array(received);
-    let offset = 0;
-    for (const c of chunks) {
-      merged.set(c, offset);
-      offset += c.byteLength;
-    }
-    const sample = new TextDecoder().decode(merged);
-
-    return { ok: true as const, status: res.status, contentType, sample };
-  } catch (e) {
-    return { ok: false as const, error: e instanceof Error ? e.message : "Request failed" };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-function looksLikeM3u(sample: string | undefined, contentType: string | undefined): boolean {
-  if (contentType && /mpegurl|x-mpegurl/i.test(contentType)) return true;
-  if (!sample) return false;
-  return sample.trimStart().startsWith("#EXTM3U");
-}
-
-function withXtreamPlaylistParams(rawUrl: string, username = "demo", password = "demo"): string {
-  try {
-    const u = new URL(rawUrl);
-    if (!u.searchParams.has("username")) u.searchParams.set("username", username);
-    if (!u.searchParams.has("password")) u.searchParams.set("password", password);
-    if (!u.searchParams.has("type")) u.searchParams.set("type", "m3u_plus");
-    if (!u.searchParams.has("output")) u.searchParams.set("output", "ts");
-    return u.toString();
-  } catch {
-    return rawUrl;
-  }
-}
-
 function looksLikeHtml(text: string | undefined): boolean {
   if (!text) return false;
   const trimmed = text.trimStart().slice(0, 200).toLowerCase();
@@ -456,121 +369,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3) Probe typical Xtream-style endpoint used for playlists.
-    // We don't validate credentials here; we just ensure the endpoint exists.
-    const m3uProbeUrl = `${streamUrl}/get.php?username=test&password=test&type=m3u_plus&output=ts`;
-    const m3uProbe = await tryFetch(m3uProbeUrl, { method: "GET" });
-
-    // Treat 404 as definitive failure; other statuses (200/401/403/500) can vary by panel.
-    if (!m3uProbe.ok) {
-      return NextResponse.json(
-        { success: false, error: `Stream URL probe failed: ${m3uProbe.error}` },
-        { status: 400 }
-      );
-    }
-
-    if (m3uProbe.status === 404) {
-      // Many providers expose a direct playlist endpoint instead of Xtream get.php.
-      const playlistCandidates: string[] = [];
-
-      const addCandidate = (u: string) => {
-        const normalized = normalizeBaseUrl(u);
-        if (!playlistCandidates.includes(normalized)) playlistCandidates.push(normalized);
-      };
-
-      // If admin pasted a full playlist URL into Stream Base URL, probe it directly.
-      if (/\/playlist(\/|$|\?)/i.test(streamUrl)) {
-        addCandidate(streamUrl);
-      }
-      addCandidate(`${streamUrl}/playlist`);
-      addCandidate(`${streamUrl}/playlist.m3u`);
-      addCandidate(`${streamUrl}/playlist.m3u8`);
-      addCandidate(`${streamUrl}/playlist/`);
-
-      // Also try https origin when the API URL is http (very common split between panel/API and streaming).
-      try {
-        const su = new URL(streamUrl);
-        const httpsOrigin = `https://${su.host}`;
-        addCandidate(`${httpsOrigin}/playlist`);
-        addCandidate(`https://${su.hostname}:443/playlist`);
-        addCandidate(`${httpsOrigin}/playlist/`);
-      } catch {
-        // ignore
-      }
-
-      let playlistOk: { url: string; status: number; contentType?: string } | null = null;
-      const playlistAttempts: Array<{ url: string; status?: number; contentType?: string; note?: string }> = [];
-
-      for (const candidate of playlistCandidates) {
-        const res = await tryFetchSample(candidate, 2048);
-        if (!res.ok) {
-          playlistAttempts.push({ url: candidate, note: res.error });
-          continue;
-        }
-        playlistAttempts.push({ url: candidate, status: res.status, contentType: res.contentType });
-
-        // Accept if it's not a 404 and looks like an M3U response.
-        if (res.status !== 404 && looksLikeM3u(res.sample, res.contentType)) {
-          playlistOk = { url: candidate, status: res.status, contentType: res.contentType };
-          break;
-        }
-
-        // Some providers require username/password query params even on /playlist.
-        if (!candidate.includes("?") && res.status === 404) {
-          const withParams = withXtreamPlaylistParams(candidate);
-          const res2 = await tryFetchSample(withParams, 2048);
-          if (!res2.ok) {
-            playlistAttempts.push({ url: withParams, note: res2.error });
-            continue;
-          }
-          playlistAttempts.push({ url: withParams, status: res2.status, contentType: res2.contentType });
-          if (res2.status !== 404 && looksLikeM3u(res2.sample, res2.contentType)) {
-            playlistOk = { url: withParams, status: res2.status, contentType: res2.contentType };
-            break;
-          }
-        }
-      }
-
-      if (playlistOk) {
-        return NextResponse.json({
-          success: true,
-          mode: "playlist",
-          panelStatus: panelProbe.status,
-          streamStatus: playlistOk.status,
-          streamUrl: playlistOk.url,
-          apiAuth,
-          warnings: [
-            "Xtream get.php was not found (404). Detected a direct /playlist endpoint instead.",
-            "If your provider only supports direct playlists, automated provisioning (create/suspend/renew users) may not be supported.",
-          ],
-          debug: {
-            playlistAttempts,
-          },
-        });
-      }
-
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Stream URL does not look like an Xtream playlist endpoint (get.php returned 404). If you have a provider playlist URL (e.g. https://HOST/playlist), set Stream Base URL to that and retry.",
-          debug: {
-            playlistCandidates,
-            playlistAttempts,
-          },
-        },
-        { status: 400 }
-      );
-    }
-
-    // If we got here, we can reach the panel + authenticate + reach playlist endpoint.
+    // 3) API auth succeeded — that's all we need for user management
+    //    (create, suspend, renew, revoke). Stream/playlist probing is not
+    //    required because the panel API handles user lifecycle; the panel
+    //    itself generates M3U/playlist URLs for provisioned users.
     return NextResponse.json({
       success: true,
       panelStatus: panelProbe.status,
-      streamStatus: m3uProbe.status,
       apiAuth,
+      streamBaseUrl: streamUrl,
       notes:
-        "Connectivity looks good. Provisioning will generate M3U URLs using the Stream Base URL.",
+        "Panel is reachable and API authenticated. User management (create/suspend/renew) is ready.",
     });
   } catch (error) {
     return NextResponse.json(

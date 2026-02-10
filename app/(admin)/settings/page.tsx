@@ -247,7 +247,11 @@ export default function SettingsPage() {
       const data = await response.json();
       setXtremeUiStatus(data.success ? "success" : "error");
       if (data.success) {
-        toast.success("Xtreme UI connection successful");
+        const notes = data.notes || "Connection successful";
+        toast.success(notes);
+        if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+          setXtremeUiHint(data.warnings.join(" "));
+        }
       } else {
         const msg = data.error || "Xtreme UI connection failed";
         setXtremeUiError(msg);
@@ -458,7 +462,8 @@ export default function SettingsPage() {
                   placeholder="https://your-stream.example"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Optional. Used to generate M3U URLs (defaults to Panel URL if empty).
+                  Optional. Only needed if you want the system to generate M3U playlist URLs for users.
+                  Not required for user management (create/suspend/renew).
                 </p>
               </div>
 
@@ -518,6 +523,12 @@ export default function SettingsPage() {
                   {xtremeUiHint ? (
                     <p className="text-sm text-muted-foreground">{xtremeUiHint}</p>
                   ) : null}
+                </div>
+              ) : null}
+
+              {xtremeUiStatus === "success" && xtremeUiHint ? (
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">{xtremeUiHint}</p>
                 </div>
               ) : null}
             </CardContent>
