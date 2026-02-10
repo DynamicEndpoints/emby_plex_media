@@ -133,6 +133,19 @@ function looksLikeM3u(sample: string | undefined, contentType: string | undefine
   return sample.trimStart().startsWith("#EXTM3U");
 }
 
+function withXtreamPlaylistParams(rawUrl: string, username = "demo", password = "demo"): string {
+  try {
+    const u = new URL(rawUrl);
+    if (!u.searchParams.has("username")) u.searchParams.set("username", username);
+    if (!u.searchParams.has("password")) u.searchParams.set("password", password);
+    if (!u.searchParams.has("type")) u.searchParams.set("type", "m3u_plus");
+    if (!u.searchParams.has("output")) u.searchParams.set("output", "ts");
+    return u.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
 function looksLikeHtml(text: string | undefined): boolean {
   if (!text) return false;
   const trimmed = text.trimStart().slice(0, 200).toLowerCase();
@@ -472,12 +485,15 @@ export async function POST(req: NextRequest) {
       addCandidate(`${streamUrl}/playlist`);
       addCandidate(`${streamUrl}/playlist.m3u`);
       addCandidate(`${streamUrl}/playlist.m3u8`);
+      addCandidate(`${streamUrl}/playlist/`);
 
       // Also try https origin when the API URL is http (very common split between panel/API and streaming).
       try {
         const su = new URL(streamUrl);
         const httpsOrigin = `https://${su.host}`;
         addCandidate(`${httpsOrigin}/playlist`);
+        addCandidate(`https://${su.hostname}:443/playlist`);
+        addCandidate(`${httpsOrigin}/playlist/`);
       } catch {
         // ignore
       }
@@ -497,6 +513,21 @@ export async function POST(req: NextRequest) {
         if (res.status !== 404 && looksLikeM3u(res.sample, res.contentType)) {
           playlistOk = { url: candidate, status: res.status, contentType: res.contentType };
           break;
+        }
+
+        // Some providers require username/password query params even on /playlist.
+        if (!candidate.includes("?") && res.status === 404) {
+          const withParams = withXtreamPlaylistParams(candidate);
+          const res2 = await tryFetchSample(withParams, 2048);
+          if (!res2.ok) {
+            playlistAttempts.push({ url: withParams, note: res2.error });
+            continue;
+          }
+          playlistAttempts.push({ url: withParams, status: res2.status, contentType: res2.contentType });
+          if (res2.status !== 404 && looksLikeM3u(res2.sample, res2.contentType)) {
+            playlistOk = { url: withParams, status: res2.status, contentType: res2.contentType };
+            break;
+          }
         }
       }
 
