@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useUser } from "@clerk/nextjs";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -32,6 +32,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Trash2, Plus, Save } from "lucide-react";
 import { formatDateTime } from "@/lib/utils";
 
@@ -48,19 +57,25 @@ export default function IptvPlansPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [bouquetIdsRaw, setBouquetIdsRaw] = useState("");
+  const [selectedBouquetIds, setSelectedBouquetIds] = useState<string[]>([]);
   const [durationDays, setDurationDays] = useState<string>("");
   const [stripePriceId, setStripePriceId] = useState("");
+
+  const [packagesLoading, setPackagesLoading] = useState(false);
+  const [packagesError, setPackagesError] = useState<string>("");
+  const [packages, setPackages] = useState<Array<{ id: string; name: string; bouquetIds?: string[] }>>([]);
 
   const resetForm = () => {
     setEditingId(null);
     setName("");
     setDescription("");
     setBouquetIdsRaw("");
+    setSelectedBouquetIds([]);
     setDurationDays("");
     setStripePriceId("");
   };
 
-  const bouquetIds = useMemo(() => {
+  const manualBouquetIds = useMemo(() => {
     const items = bouquetIdsRaw
       .split(",")
       .map((s) => s.trim())
@@ -68,15 +83,60 @@ export default function IptvPlansPage() {
     return items.length ? items : undefined;
   }, [bouquetIdsRaw]);
 
+  const bouquetIds = useMemo(() => {
+    const combined = new Set<string>([...selectedBouquetIds, ...(manualBouquetIds || [])]);
+    const list = Array.from(combined).filter(Boolean);
+    return list.length ? list : undefined;
+  }, [selectedBouquetIds, manualBouquetIds]);
+
+  const packageMap = useMemo(() => {
+    return new Map(packages.map((p) => [p.id, p]));
+  }, [packages]);
+
   const handleEdit = (plan: any) => {
     setEditingId(String(plan._id));
     setName(plan.name || "");
     setDescription(plan.description || "");
-    setBouquetIdsRaw((plan.bouquetIds || []).join(", "));
+    setSelectedBouquetIds((plan.bouquetIds || []).map(String));
+    setBouquetIdsRaw("");
     setDurationDays(plan.durationDays ? String(plan.durationDays) : "");
     setStripePriceId(plan.stripePriceId || "");
     setOpen(true);
   };
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+
+    const fetchPackages = async () => {
+      setPackagesLoading(true);
+      setPackagesError("");
+      try {
+        const res = await fetch("/api/iptv/packages", { method: "GET" });
+        const data = await res.json();
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.error || "Failed to fetch packages");
+        }
+        if (!cancelled) {
+          const normalized = Array.isArray(data.packages) ? data.packages : [];
+          setPackages(normalized);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setPackagesError(e instanceof Error ? e.message : "Failed to fetch packages");
+          setPackages([]);
+        }
+      } finally {
+        if (!cancelled) setPackagesLoading(false);
+      }
+    };
+
+    fetchPackages();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const handleSave = async () => {
     if (!user) return;
@@ -161,13 +221,69 @@ export default function IptvPlansPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="bouquets">Bouquet IDs (comma-separated)</Label>
-                <Input
-                  id="bouquets"
-                  value={bouquetIdsRaw}
-                  onChange={(e) => setBouquetIdsRaw(e.target.value)}
-                  placeholder="1, 2, 7"
-                />
+                <Label>Bouquet Packages</Label>
+                <div className="flex flex-wrap gap-2">
+                  {selectedBouquetIds.length ? (
+                    selectedBouquetIds.map((id) => {
+                      const pkg = packageMap.get(id);
+                      return (
+                        <Badge key={id} variant="outline">
+                          {pkg?.name || `ID ${id}`}
+                        </Badge>
+                      );
+                    })
+                  ) : (
+                    <span className="text-sm text-muted-foreground">No packages selected</span>
+                  )}
+                </div>
+
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" type="button">
+                      Select Packages
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent className="max-h-64 overflow-auto">
+                    <DropdownMenuLabel>Available Packages</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {packagesLoading ? (
+                      <DropdownMenuItem disabled>Loading...</DropdownMenuItem>
+                    ) : packagesError ? (
+                      <DropdownMenuItem disabled>{packagesError}</DropdownMenuItem>
+                    ) : packages.length === 0 ? (
+                      <DropdownMenuItem disabled>No packages found</DropdownMenuItem>
+                    ) : (
+                      packages.map((pkg) => (
+                        <DropdownMenuCheckboxItem
+                          key={pkg.id}
+                          checked={selectedBouquetIds.includes(pkg.id)}
+                          onCheckedChange={(checked) => {
+                            setSelectedBouquetIds((prev) =>
+                              checked
+                                ? Array.from(new Set([...prev, pkg.id]))
+                                : prev.filter((id) => id !== pkg.id)
+                            );
+                          }}
+                        >
+                          {pkg.name} <span className="ml-2 text-xs text-muted-foreground">({pkg.id})</span>
+                        </DropdownMenuCheckboxItem>
+                      ))
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                <div className="space-y-2">
+                  <Label htmlFor="bouquets">Custom Bouquet IDs (optional)</Label>
+                  <Input
+                    id="bouquets"
+                    value={bouquetIdsRaw}
+                    onChange={(e) => setBouquetIdsRaw(e.target.value)}
+                    placeholder="1, 2, 7"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Use this only if your panel does not return packages from the API.
+                  </p>
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">

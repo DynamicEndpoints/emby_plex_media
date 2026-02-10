@@ -366,6 +366,56 @@ export const requestChangePlan = mutation({
   },
 });
 
+export const adminSetPlanForUser = mutation({
+  args: {
+    adminClerkId: v.string(),
+    userId: v.id("users"),
+    planId: v.id("iptvPlans"),
+  },
+  handler: async (ctx, args) => {
+    await requireAdmin()(ctx, args.adminClerkId);
+
+    const user = await ctx.db.get(args.userId);
+    if (!user) throw new Error("User not found");
+
+    const existing = await ctx.db
+      .query("iptvAccounts")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+
+    const now = Date.now();
+    let accountId = existing?._id;
+
+    if (!existing) {
+      const username = generateUsernameFromEmail(user.email);
+      accountId = await ctx.db.insert("iptvAccounts", {
+        provider: "xtremeui",
+        userId: user._id,
+        username,
+        password: generatePassword(),
+        status: "pending",
+        planId: args.planId,
+        createdAt: now,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.patch(existing._id, {
+        planId: args.planId,
+        updatedAt: now,
+      });
+    }
+
+    const jobId = await enqueueJob(ctx, {
+      type: existing ? "iptv.changePlan" : "iptv.provision",
+      userId: user._id,
+      clerkId: user.clerkId,
+      payload: { accountId, planId: args.planId },
+    });
+
+    return { accountId, jobId };
+  },
+});
+
 // ============================================================
 // Xtreme UI API helpers (network calls run in Actions)
 // ============================================================

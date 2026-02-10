@@ -56,10 +56,14 @@ export default function UsersPage() {
     api.users.search,
     searchQuery.length >= 2 ? { query: searchQuery } : "skip"
   );
+  const iptvPlans = useQuery(api.iptv.listPlans, { provider: "xtremeui" });
   const revoke = useMutation(api.users.revoke);
   const restore = useMutation(api.users.restore);
   const remove = useMutation(api.users.remove);
   const markUserAsFree = useMutation(api.payments.markUserAsFree);
+  const adminSetIptvPlan = useMutation(api.iptv.adminSetPlanForUser);
+
+  const [iptvSelections, setIptvSelections] = useState<Record<string, string>>({});
 
   const displayedUsers = searchQuery.length >= 2 ? searchResults : users;
 
@@ -169,6 +173,7 @@ export default function UsersPage() {
                     <TableHead>Payment</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Joined</TableHead>
+                    <TableHead>IPTV Plan</TableHead>
                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -224,6 +229,48 @@ export default function UsersPage() {
                   </TableCell>
                       <TableCell className="text-muted-foreground">
                         {user.lastSeen ? timeAgo(user.lastSeen) : "Never"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <select
+                            className="w-full min-w-[160px] rounded-md border bg-background px-2 py-1.5 text-sm"
+                            value={iptvSelections[user._id] || ""}
+                            onChange={(e) =>
+                              setIptvSelections((prev) => ({
+                                ...prev,
+                                [user._id]: e.target.value,
+                              }))
+                            }
+                          >
+                            <option value="">Select plan</option>
+                            {(iptvPlans || []).map((plan) => (
+                              <option key={plan._id} value={plan._id}>
+                                {plan.name}
+                              </option>
+                            ))}
+                          </select>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={!adminUser?.id || !iptvSelections[user._id]}
+                            onClick={async () => {
+                              if (!adminUser?.id) return;
+                              const planId = iptvSelections[user._id];
+                              if (!planId) return;
+                              try {
+                                await adminSetIptvPlan({
+                                  adminClerkId: adminUser.id,
+                                  userId: user._id,
+                                  planId: planId as any,
+                                });
+                              } catch (e) {
+                                alert(e instanceof Error ? e.message : "Failed to apply IPTV plan");
+                              }
+                            }}
+                          >
+                            Apply
+                          </Button>
+                        </div>
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
@@ -285,7 +332,7 @@ export default function UsersPage() {
                   {(!displayedUsers || displayedUsers.length === 0) && (
                     <TableRow>
                       <TableCell
-                        colSpan={8}
+                        colSpan={9}
                         className="text-center text-muted-foreground py-8"
                       >
                         {searchQuery.length >= 2
