@@ -75,24 +75,50 @@ function buildCandidateApiUrls(inputUrl: string): string[] {
   const normalized = normalizeBaseUrl(inputUrl);
   const origin = deriveOriginUrl(normalized);
 
-  const candidates = new Set<string>();
-  candidates.add(normalized);
+  const baseUrls = new Set<string>();
+  baseUrls.add(normalized);
 
-  // Common panel API scripts
-  const scripts = ["api.php", "reseller_api.php", "admin_api.php"]; // low-risk guesses
-  for (const script of scripts) {
-    // Relative to the provided URL path
-    try {
-      candidates.add(new URL(script, ensureTrailingSlash(normalized)).toString().replace(/\/$/, ""));
-    } catch {
-      // ignore
+  // If the user pasted only a bare domain, the panel may live under a subpath.
+  try {
+    const u = new URL(normalized);
+    const path = u.pathname || "/";
+    if (path === "/" || path === "") {
+      const commonPanelPaths = [
+        "/xui",
+        "/xtremeui",
+        "/xtreamui",
+        "/panel",
+        "/admin",
+        "/ui",
+      ];
+      for (const p of commonPanelPaths) {
+        baseUrls.add(new URL(p, origin).toString().replace(/\/$/, ""));
+      }
     }
+  } catch {
+    // ignore
+  }
 
-    // From origin root
-    try {
-      candidates.add(new URL(`/${script}`, origin).toString().replace(/\/$/, ""));
-    } catch {
-      // ignore
+  const candidates = new Set<string>();
+  for (const baseUrl of baseUrls) {
+    candidates.add(baseUrl);
+
+    // Common panel API scripts
+    const scripts = ["api.php", "reseller_api.php", "admin_api.php"]; // low-risk guesses
+    for (const script of scripts) {
+      // Relative to the provided URL path
+      try {
+        candidates.add(new URL(script, ensureTrailingSlash(baseUrl)).toString().replace(/\/$/, ""));
+      } catch {
+        // ignore
+      }
+
+      // From origin root
+      try {
+        candidates.add(new URL(`/${script}`, origin).toString().replace(/\/$/, ""));
+      } catch {
+        // ignore
+      }
     }
   }
 
