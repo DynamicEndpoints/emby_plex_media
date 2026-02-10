@@ -63,6 +63,7 @@ export default function IptvPlansPage() {
 
   const [packagesLoading, setPackagesLoading] = useState(false);
   const [packagesError, setPackagesError] = useState<string>("");
+  const [packagesDebug, setPackagesDebug] = useState<any>(null);
   const [packages, setPackages] = useState<Array<{ id: string; name: string; bouquetIds?: string[] }>>([]);
 
   const resetForm = () => {
@@ -112,7 +113,7 @@ export default function IptvPlansPage() {
       setPackagesLoading(true);
       setPackagesError("");
       try {
-        const res = await fetch("/api/iptv/packages", { method: "GET" });
+        const res = await fetch("/api/iptv/packages?debug=1", { method: "GET" });
         const data = await res.json();
         if (!res.ok || !data?.success) {
           throw new Error(data?.error || "Failed to fetch packages");
@@ -120,11 +121,13 @@ export default function IptvPlansPage() {
         if (!cancelled) {
           const normalized = Array.isArray(data.packages) ? data.packages : [];
           setPackages(normalized);
+          setPackagesDebug(data?.debug || null);
         }
       } catch (e) {
         if (!cancelled) {
           setPackagesError(e instanceof Error ? e.message : "Failed to fetch packages");
           setPackages([]);
+          setPackagesDebug(null);
         }
       } finally {
         if (!cancelled) setPackagesLoading(false);
@@ -271,6 +274,18 @@ export default function IptvPlansPage() {
                     )}
                   </DropdownMenuContent>
                 </DropdownMenu>
+
+                {packages.length === 0 && !packagesLoading && !packagesError ? (
+                  <div className="text-xs text-muted-foreground">
+                    No packages returned by the panel API. You can still use Custom Bouquet IDs below.
+                  </div>
+                ) : null}
+
+                {packagesDebug?.attempts ? (
+                  <div className="text-xs text-muted-foreground">
+                    Attempts: {packagesDebug.attempts.length}. If this looks wrong, use Custom Bouquet IDs.
+                  </div>
+                ) : null}
 
                 <div className="space-y-2">
                   <Label htmlFor="bouquets">Custom Bouquet IDs (optional)</Label>

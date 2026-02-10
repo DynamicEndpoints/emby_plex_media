@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
@@ -9,12 +9,14 @@ const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
  * Fetches available packages/bouquets from the IPTV panel API.
  * Uses the saved Xtreme UI settings from Convex.
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const debug = req.nextUrl.searchParams.get("debug") === "1";
 
     // Fetch IPTV settings from Convex
     const settings = await convex.query(api.settings.getAll);
@@ -29,8 +31,8 @@ export async function GET() {
     }
 
     // Try fetching packages from the panel with multiple action/endpoint variants
-    const packages = await fetchPackagesFromPanel(apiUrl, apiKey || "");
-    return NextResponse.json({ success: true, packages });
+    const { packages, attempts } = await fetchPackagesFromPanel(apiUrl, apiKey || "");
+    return NextResponse.json({ success: true, packages, debug: debug ? { attempts } : undefined });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Failed to fetch packages" },
@@ -69,8 +71,17 @@ async function fetchJsonFromPanel(url: string): Promise<any> {
   }
 }
 
-async function fetchPackagesFromPanel(apiUrl: string, apiKey: string): Promise<PanelPackage[]> {
+async function fetchPackagesFromPanel(apiUrl: string, apiKey: string): Promise<{ packages: PanelPackage[]; attempts: any[] }> {
   const baseUrl = apiUrl.replace(/\/$/, "");
+  const attempts: Array<{
+    action?: string;
+    sub?: string;
+    url: string;
+    ok: boolean;
+    status?: number;
+    isJson?: boolean;
+    note?: string;
+  }> = [];
 
   // Build the param string for auth
   const authParams = apiKey
@@ -106,24 +117,41 @@ async function fetchPackagesFromPanel(apiUrl: string, apiKey: string): Promise<P
     const url = `${baseUrl}${baseUrl.includes("?") ? "&" : "?"}${params.toString()}`;
     const res = await fetchJsonFromPanel(url);
 
+    attempts.push({
+      action,
+      sub,
+      url,
+      ok: res.ok,
+      status: res.ok ? res.status : undefined,
+      isJson: !!res.json,
+      note: res.ok ? undefined : res.error,
+    });
+
     if (!res.ok || !res.json) continue;
 
     const parsed = tryParsePackages(res.json);
     if (parsed.length > 0) {
-      return parsed;
+      return { packages: parsed, attempts };
     }
   }
 
   // If the API URL itself already returns package data (some token-in-URL panels
   // return the full config including packages at the base URL), check the base response
   const baseRes = await fetchJsonFromPanel(baseUrl);
+  attempts.push({
+    url: baseUrl,
+    ok: baseRes.ok,
+    status: baseRes.ok ? baseRes.status : undefined,
+    isJson: !!baseRes.json,
+    note: baseRes.ok ? "base" : baseRes.error,
+  });
   if (baseRes.ok && baseRes.json) {
     // Check if the base response has packages/bouquets embedded
     const embedded = tryExtractEmbeddedPackages(baseRes.json);
-    if (embedded.length > 0) return embedded;
+    if (embedded.length > 0) return { packages: embedded, attempts };
   }
 
-  return [];
+  return { packages: [], attempts };
 }
 
 function buildAuthParams(apiKey: string): string {
