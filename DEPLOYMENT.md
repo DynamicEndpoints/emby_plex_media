@@ -74,6 +74,48 @@ Add these environment variables in Vercel Dashboard → Project → Settings →
 | `CLERK_SECRET_KEY` | Clerk secret key |
 | `CLERK_WEBHOOK_SECRET` | Clerk webhook signing secret |
 
+### Payments (Stripe)
+
+Stripe secrets are required for:
+- Webhook processing (Next.js endpoint: `/api/webhooks/stripe`)
+- Subscription sync (Convex HTTP action: `/stripe/sync`, proxied by `/api/stripe/sync`)
+
+Set these in **Vercel** (Next.js runtime):
+
+| Variable | Description |
+|----------|-------------|
+| `STRIPE_SECRET_KEY` | Stripe secret key (`sk_...`) |
+| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret (`whsec_...`) |
+
+Also set these in **Convex environment variables** (Convex runtime):
+
+```bash
+npx convex env set STRIPE_SECRET_KEY=sk_...
+npx convex env set STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+### Internal automation (recommended)
+
+Used for server-to-server calls like scheduled revocations hitting `/api/revoke-access`.
+
+Set in **Vercel**:
+
+| Variable | Description |
+|----------|-------------|
+| `INTERNAL_API_KEY` | Shared secret for internal routes |
+
+Set the same value in **Convex**:
+
+```bash
+npx convex env set INTERNAL_API_KEY=...
+```
+
+In production, also set the app base URL in **Convex** so it can call back into your app:
+
+```bash
+npx convex env set SITE_URL=https://your-vercel-domain.vercel.app
+```
+
 ### Optional Variables
 
 These are optional since Plex, Emby, and SMTP settings can be configured through the app's Settings page:
@@ -84,6 +126,12 @@ These are optional since Plex, Emby, and SMTP settings can be configured through
 | `PLEX_TOKEN` | Plex authentication token (fallback) |
 | `EMBY_URL` | Emby server URL (fallback) |
 | `EMBY_API_KEY` | Emby API key (fallback) |
+
+Other optional Next.js env vars:
+
+| Variable | Description |
+|----------|-------------|
+| `BUYMEACOFFEE_WEBHOOK_TOKEN` | Verifies Buy Me a Coffee webhooks |
 
 ## Step 5: Configure Webhook URL in Clerk
 

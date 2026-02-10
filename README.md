@@ -14,7 +14,7 @@ A modern web application to manage invite codes for Plex and Emby media servers.
 
 ## Tech Stack
 
-- **Frontend**: Next.js 14 (App Router), React, Tailwind CSS
+- **Frontend**: Next.js (App Router), React, Tailwind CSS
 - **Backend**: Convex (real-time database)
 - **Auth**: Clerk
 - **Email**: Resend
@@ -63,20 +63,31 @@ A modern web application to manage invite codes for Plex and Emby media servers.
    CONVEX_DEPLOYMENT=dev:xxx
    NEXT_PUBLIC_CONVEX_URL=https://xxx.convex.cloud
 
-   # Plex (optional)
-   PLEX_URL=http://localhost:32400
-   PLEX_TOKEN=your_plex_token
+   # Internal API key (recommended)
+   INTERNAL_API_KEY=change-me
 
-   # Emby (optional)
-   EMBY_URL=http://localhost:8096
-   EMBY_API_KEY=your_emby_api_key
+   # Stripe (optional)
+   STRIPE_SECRET_KEY=sk_test_xxx
+   STRIPE_WEBHOOK_SECRET=whsec_xxx
 
-   # Email (optional)
-   RESEND_API_KEY=re_xxx
-   EMAIL_FROM=invites@yourdomain.com
+   # NOTE: Plex/Emby/SMTP/IPTV panel settings are stored in Convex and configured
+   # from the app's Admin Settings UI after you sign in.
    ```
 
-5. **Run the development server**
+5. **Configure Convex environment variables (Stripe / internal automation)**
+
+   Some server-side workflows run inside Convex (HTTP actions + scheduled jobs). Those require Convex env vars.
+   Set them via the Convex CLI (do not paste secrets into chat):
+
+   ```bash
+   npx convex env set STRIPE_SECRET_KEY=sk_...
+   npx convex env set STRIPE_WEBHOOK_SECRET=whsec_...
+   npx convex env set INTERNAL_API_KEY=change-me
+   # Optional but recommended in production so Convex can call your app:
+   npx convex env set SITE_URL=https://your-domain.com
+   ```
+
+6. **Run the development server**
    ```bash
    npm run dev
    ```

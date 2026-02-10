@@ -4,6 +4,10 @@ function normalizeBaseUrl(url: string): string {
   return url.trim().replace(/\/$/, "");
 }
 
+function ensureTrailingSlash(url: string): string {
+  return url.endsWith("/") ? url : `${url}/`;
+}
+
 function deriveOriginUrl(url: string): string {
   try {
     const u = new URL(url);
@@ -41,17 +45,71 @@ async function tryFetchJson(url: string) {
       cache: "no-store",
       signal: controller.signal,
     });
+    const contentType = res.headers.get("content-type") || undefined;
     const text = await res.text();
     try {
-      return { ok: true as const, status: res.status, json: JSON.parse(text) as any };
+      return { ok: true as const, status: res.status, json: JSON.parse(text) as any, contentType };
     } catch {
-      return { ok: true as const, status: res.status, json: null as any, text };
+      return { ok: true as const, status: res.status, json: null as any, text, contentType };
     }
   } catch (e) {
     return { ok: false as const, error: e instanceof Error ? e.message : "Request failed" };
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function looksLikeHtml(text: string | undefined): boolean {
+  if (!text) return false;
+  const trimmed = text.trimStart().slice(0, 200).toLowerCase();
+  return trimmed.startsWith("<!doctype html") || trimmed.startsWith("<html") || trimmed.includes("<head");
+}
+
+function truncate(text: string | undefined, maxLen: number): string | undefined {
+  if (!text) return undefined;
+  if (text.length <= maxLen) return text;
+  return `${text.slice(0, maxLen)}…`;
+}
+
+function buildCandidateApiUrls(inputUrl: string): string[] {
+  const normalized = normalizeBaseUrl(inputUrl);
+  const origin = deriveOriginUrl(normalized);
+
+  const candidates = new Set<string>();
+  candidates.add(normalized);
+
+  // Common panel API scripts
+  const scripts = ["api.php", "reseller_api.php", "admin_api.php"]; // low-risk guesses
+  for (const script of scripts) {
+    // Relative to the provided URL path
+    try {
+      candidates.add(new URL(script, ensureTrailingSlash(normalized)).toString().replace(/\/$/, ""));
+    } catch {
+      // ignore
+    }
+
+    // From origin root
+    try {
+      candidates.add(new URL(`/${script}`, origin).toString().replace(/\/$/, ""));
+    } catch {
+      // ignore
+    }
+  }
+
+  return Array.from(candidates);
+}
+
+function isInvalidApiKeyError(status: unknown, error: unknown): boolean {
+  if (status !== "STATUS_FAILURE") return false;
+  if (typeof error !== "string") return false;
+  return /invalid api key/i.test(error);
+}
+
+function isAuthSuccessShape(json: any): boolean {
+  if (!json || typeof json !== "object") return false;
+  if (json.status === "STATUS_SUCCESS") return true;
+  if (json.success === true) return true;
+  return false;
 }
 
 export async function POST(req: NextRequest) {
@@ -81,43 +139,117 @@ export async function POST(req: NextRequest) {
 
     // 2) Validate API key against the panel API.
     // Many Xtreme UI panels return STATUS_FAILURE/STATUS_SUCCESS.
-    const keyParamCandidates = ["api_key", "key", "apikey"]; // try a few common variants
-    let apiAuth: { ok: boolean; status?: number; message?: string } = { ok: false };
+    const keyParamCandidates = [
+      "api_key",
+      "apikey",
+      "apiKey",
+      "key",
+      "token",
+      "api_token",
+      "api-token",
+    ];
 
-    for (const keyParam of keyParamCandidates) {
-      const pingUrl = `${panelUrl}${panelUrl.includes("?") ? "&" : "?"}${keyParam}=${encodeURIComponent(
-        apiKey
-      )}`;
-      const res = await tryFetchJson(pingUrl);
-      if (!res.ok) continue;
+    const apiUrlCandidates = buildCandidateApiUrls(panelUrl);
 
-      const status = (res.json && typeof res.json === "object" ? res.json.status : undefined) as
-        | string
-        | undefined;
-      const error = (res.json && typeof res.json === "object" ? res.json.error : undefined) as
-        | string
-        | undefined;
+    const apiAuthAttempts: Array<{
+      apiUrl: string;
+      keyParam: string;
+      httpStatus?: number;
+      contentType?: string;
+      parsedStatus?: string;
+      parsedError?: string;
+      isJson?: boolean;
+      looksLikeHtml?: boolean;
+      textSample?: string;
+      note?: string;
+    }> = [];
 
-      if (status === "STATUS_SUCCESS") {
-        apiAuth = { ok: true, status: res.status, message: `Authenticated via ${keyParam}` };
-        break;
+    let apiAuth: { ok: boolean; status?: number; message?: string; keyParam?: string } = {
+      ok: false,
+    };
+
+    for (const apiUrl of apiUrlCandidates) {
+      for (const keyParam of keyParamCandidates) {
+        const pingUrl = `${apiUrl}${apiUrl.includes("?") ? "&" : "?"}${keyParam}=${encodeURIComponent(
+          apiKey
+        )}`;
+        const res = await tryFetchJson(pingUrl);
+        if (!res.ok) {
+          apiAuthAttempts.push({ apiUrl, keyParam, note: res.error });
+          continue;
+        }
+
+        const parsedStatus =
+          res.json && typeof res.json === "object" && typeof (res.json as any).status === "string"
+            ? ((res.json as any).status as string)
+            : undefined;
+        const parsedError =
+          res.json && typeof res.json === "object" && typeof (res.json as any).error === "string"
+            ? ((res.json as any).error as string)
+            : undefined;
+
+        const textSample = "text" in res ? truncate((res as any).text, 200) : undefined;
+        const htmlish = "text" in res ? looksLikeHtml((res as any).text) : false;
+
+        apiAuthAttempts.push({
+          apiUrl,
+          keyParam,
+          httpStatus: res.status,
+          contentType: (res as any).contentType,
+          parsedStatus,
+          parsedError,
+          isJson: !!res.json,
+          looksLikeHtml: htmlish,
+          textSample,
+        });
+
+        if (isAuthSuccessShape(res.json)) {
+          apiAuth = {
+            ok: true,
+            status: res.status,
+            message: `Authenticated via ${keyParam}`,
+            keyParam,
+          };
+          break;
+        }
+
+        if (isInvalidApiKeyError(parsedStatus, parsedError)) {
+          // Keep trying other param names just in case.
+          continue;
+        }
+
+        // If we got a JSON response and it *didn't* say invalid api key, it's very likely
+        // the key parameter name is correct (panel-specific schemas vary).
+        if (res.json && typeof res.json === "object") {
+          apiAuth = {
+            ok: true,
+            status: res.status,
+            message: `Panel responded with JSON via ${keyParam} (treating as authenticated)`,
+            keyParam,
+          };
+          break;
+        }
       }
 
-      if (status === "STATUS_FAILURE" && error && /invalid api key/i.test(error)) {
-        apiAuth = { ok: false, status: res.status, message: "Invalid API key" };
-        // Keep trying other param names just in case.
-        continue;
-      }
-
-      // If we got JSON but not a recognized status, keep probing.
+      if (apiAuth.ok) break;
     }
 
     if (!apiAuth.ok) {
+      const anyHtml = apiAuthAttempts.some((a) => a.looksLikeHtml);
+      const hint = anyHtml
+        ? "The panel responded with HTML (likely the Web UI). Try setting Panel URL to a panel API script like https://YOUR_PANEL/api.php (or reseller_api.php), then retest."
+        : undefined;
+
       return NextResponse.json(
         {
           success: false,
           error: apiAuth.message || "Failed to authenticate to Xtreme UI API (check API URL + key)",
           panelStatus: panelProbe.status,
+          hint,
+          debug: {
+            apiUrlCandidates,
+            apiAuthAttempts,
+          },
         },
         { status: 400 }
       );

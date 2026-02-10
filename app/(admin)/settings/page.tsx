@@ -36,6 +36,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Loader2, Save, Eye, EyeOff, CheckCircle, XCircle, Shield, UserPlus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function SettingsPage() {
   const { user } = useUser();
@@ -88,6 +89,7 @@ export default function SettingsPage() {
   const [embyStatus, setEmbyStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [xtremeUiStatus, setXtremeUiStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [smtpStatus, setSmtpStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [xtremeUiError, setXtremeUiError] = useState<string>("");
 
   // Load settings from Convex database
   useEffect(() => {
@@ -229,6 +231,7 @@ export default function SettingsPage() {
 
   const testXtremeUiConnection = async () => {
     setXtremeUiStatus("testing");
+    setXtremeUiError("");
     try {
       const response = await fetch("/api/test-xtremeui", {
         method: "POST",
@@ -241,8 +244,17 @@ export default function SettingsPage() {
       });
       const data = await response.json();
       setXtremeUiStatus(data.success ? "success" : "error");
+      if (data.success) {
+        toast.success("Xtreme UI connection successful");
+      } else {
+        const msg = data.error || "Xtreme UI connection failed";
+        setXtremeUiError(msg);
+        toast.error(msg);
+      }
     } catch {
       setXtremeUiStatus("error");
+      setXtremeUiError("Request failed");
+      toast.error("Xtreme UI connection test failed");
     }
   };
 
@@ -494,6 +506,10 @@ export default function SettingsPage() {
                   Test Connection
                 </Button>
               </div>
+
+              {xtremeUiStatus === "error" && xtremeUiError ? (
+                <p className="text-sm text-red-600">{xtremeUiError}</p>
+              ) : null}
             </CardContent>
           </Card>
         </TabsContent>
