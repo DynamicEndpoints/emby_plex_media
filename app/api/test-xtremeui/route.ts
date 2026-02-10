@@ -78,6 +78,30 @@ function buildCandidateApiUrls(inputUrl: string): string[] {
   const baseUrls = new Set<string>();
   baseUrls.add(normalized);
 
+  // If the user pasted a deep UI route (e.g. /something/dashboard), also try the directory base.
+  // Many panels host their API scripts alongside the UI within the same folder.
+  try {
+    const u = new URL(normalized);
+    const pathname = u.pathname || "/";
+    if (pathname !== "/" && !pathname.endsWith("/")) {
+      const dir = pathname.slice(0, pathname.lastIndexOf("/") + 1);
+      baseUrls.add(new URL(dir, `${u.protocol}//${u.host}`).toString().replace(/\/$/, ""));
+    }
+
+    // Common UI endpoints we can strip to get a better base.
+    const uiSuffixes = ["/dashboard", "/login", "/index.php", "/panel", "/admin"]; 
+    for (const suffix of uiSuffixes) {
+      if (pathname.toLowerCase().endsWith(suffix)) {
+        const basePath = pathname.slice(0, pathname.length - suffix.length + 1);
+        if (basePath) {
+          baseUrls.add(new URL(basePath, `${u.protocol}//${u.host}`).toString().replace(/\/$/, ""));
+        }
+      }
+    }
+  } catch {
+    // ignore
+  }
+
   // If the user pasted only a bare domain, the panel may live under a subpath.
   try {
     const u = new URL(normalized);
